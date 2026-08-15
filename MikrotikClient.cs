@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using MikroTik.RouterOS;
-using MikroTik.RouterOS.Commands;
 
 namespace MikrotikSwitch
 {
@@ -46,21 +45,23 @@ namespace MikrotikSwitch
                 try
                 {
                     var reply = _connection.SendCommand("/interface/ethernet/print");
-                    var list = new List<PortInfo>();
-                    foreach (var pair in reply.Pairs)
+                    var result = new List<PortInfo>();
+                    foreach (var sentence in reply.Sentences)
                     {
-                        // В ответе приходит несколько словарей, каждый словарь — один порт
-                        // Поля: .id, name, running, disabled и т.д.
-                        if (pair.Key == null) continue; // пропускаем служебные
-                        // Так как reply.Pairs содержит все пары подряд, нужно группировать по идентификатору.
-                        // Лучше использовать метод ToArray или обработать вручную.
-                        // Для простоты используем готовый метод GetCommands или парсим через словарь.
-                        // В библиотеке есть метод SendCommandAndParse, но мы переделаем.
+                        var dict = sentence.ToDictionary();
+                        if (dict.ContainsKey(".id"))
+                        {
+                            var pi = new PortInfo
+                            {
+                                Id = dict[".id"],
+                                Name = dict.ContainsKey("name") ? dict["name"] : "",
+                                Running = dict.ContainsKey("running") && dict["running"] == "true",
+                                Disabled = dict.ContainsKey("disabled") && dict["disabled"] == "true"
+                            };
+                            result.Add(pi);
+                        }
                     }
-                    // В реальности библиотека возвращает массив словарей. 
-                    // Используем другой метод: SendCommandAndParse или GetList.
-                    // Но для краткости покажу упрощённый вариант с готовой библиотекой.
-                    // Ниже правильная реализация.
+                    return result;
                 }
                 catch (Exception ex)
                 {
