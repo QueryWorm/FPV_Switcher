@@ -3,12 +3,10 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
-    <ApplicationIcon />
-    <StartupObject>MikrotikSwitch.Program</StartupObject>
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-    <PackageReference Include="Mikrotik.RouterOS" Version="2.0.0" />
+    <PackageReference Include="RouterOS" Version="2.0.1" />
   </ItemGroup>
 </Project>
