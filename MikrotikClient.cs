@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using Mikrotik.RouterOS;
+using RouterOS;
 
 namespace MikrotikSwitch
 {
@@ -14,59 +14,42 @@ namespace MikrotikSwitch
 
     public class MikrotikClient : IDisposable
     {
-        private Connection _connection;
-        private readonly string _address;
-        private readonly string _user;
-        private readonly string _pass;
+        private Client _client;
         private readonly object _lock = new object();
 
         public MikrotikClient(string address, string user, string pass)
         {
-            _address = address;
-            _user = user;
-            _pass = pass;
-            Connect();
-        }
-
-        private void Connect()
-        {
-            var parts = _address.Split(':');
+            var parts = address.Split(':');
             string host = parts[0];
             int port = int.Parse(parts[1]);
 
-            _connection = new Connection(host, port, _user, _pass);
-            _connection.Open();
+            _client = new Client(host, port, user, pass);
+            // Проверка соединения
+            _client.SendCommand("/system/identity/print");
         }
 
         public List<PortInfo> ListEthernetPorts()
         {
             lock (_lock)
             {
-                try
+                var reply = _client.SendCommand("/interface/ethernet/print");
+                var result = new List<PortInfo>();
+
+                // reply – это массив словарей
+                foreach (var sentence in reply)
                 {
-                    var reply = _connection.SendCommand("/interface/ethernet/print");
-                    var result = new List<PortInfo>();
-                    foreach (var sentence in reply.Sentences)
+                    if (sentence.TryGetValue(".id", out string id))
                     {
-                        var dict = sentence.ToDictionary();
-                        if (dict.ContainsKey(".id"))
+                        result.Add(new PortInfo
                         {
-                            var pi = new PortInfo
-                            {
-                                Id = dict[".id"],
-                                Name = dict.ContainsKey("name") ? dict["name"] : "",
-                                Running = dict.ContainsKey("running") && dict["running"] == "true",
-                                Disabled = dict.ContainsKey("disabled") && dict["disabled"] == "true"
-                            };
-                            result.Add(pi);
-                        }
+                            Id = id,
+                            Name = sentence.GetValueOrDefault("name", ""),
+                            Running = sentence.GetValueOrDefault("running") == "true",
+                            Disabled = sentence.GetValueOrDefault("disabled") == "true"
+                        });
                     }
-                    return result;
                 }
-                catch (Exception ex)
-                {
-                    throw new Exception("Ошибка при получении портов: " + ex.Message);
-                }
+                return result;
             }
         }
 
@@ -75,13 +58,13 @@ namespace MikrotikSwitch
             lock (_lock)
             {
                 string cmd = enabled ? "/interface/enable" : "/interface/disable";
-                _connection.SendCommand(cmd, $"=.id={id}");
+                _client.SendCommand(cmd, $"=.id={id}");
             }
         }
 
         public void Dispose()
         {
-            _connection?.Dispose();
+            _client?.Dispose();
         }
     }
 }
