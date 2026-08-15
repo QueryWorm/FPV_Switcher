@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using MikroTik.RouterOS;
+using Mikrotik.RouterOS;
 
 namespace MikrotikSwitch
 {
