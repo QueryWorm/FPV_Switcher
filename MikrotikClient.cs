@@ -25,7 +25,7 @@ namespace MikrotikSwitch
             int port = int.Parse(parts[1]);
 
             _connection = ConnectionFactory.CreateConnection(TikConnectionType.Api);
-            _connection.Open(host, user, pass, port);
+            _connection.Open(host, user, pass);
         }
 
         public List<PortInfo> ListEthernetPorts()
@@ -40,14 +40,14 @@ namespace MikrotikSwitch
 
                     foreach (var sentence in reply)
                     {
-                        if (sentence.ContainsKey(".id"))
+                        if (sentence.Words.ContainsKey(".id"))
                         {
                             result.Add(new PortInfo
                             {
-                                Id = sentence[".id"],
-                                Name = sentence.ContainsKey("name") ? sentence["name"] : "",
-                                Running = sentence.ContainsKey("running") && sentence["running"] == "true",
-                                Disabled = sentence.ContainsKey("disabled") && sentence["disabled"] == "true"
+                                Id = sentence.Words[".id"],
+                                Name = sentence.Words.ContainsKey("name") ? sentence.Words["name"] : "",
+                                Running = sentence.Words.ContainsKey("running") && sentence.Words["running"] == "true",
+                                Disabled = sentence.Words.ContainsKey("disabled") && sentence.Words["disabled"] == "true"
                             });
                         }
                     }
@@ -68,7 +68,7 @@ namespace MikrotikSwitch
                 try
                 {
                     string cmd = enabled ? "/interface/enable" : "/interface/disable";
-                    _connection.CallCommandSync(cmd, new TikCommandParameter(".id", id));
+                    _connection.CallCommandSync(cmd, new[] { new KeyValuePair<string, string>(".id", id) });
                 }
                 catch (Exception ex)
                 {
