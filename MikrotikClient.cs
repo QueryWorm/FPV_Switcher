@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using tik4net;
 
 namespace MikrotikSwitch
@@ -35,7 +36,7 @@ namespace MikrotikSwitch
 
                 try
                 {
-                    var reply = _connection.Call("/interface/ethernet/print");
+                    var reply = _connection.CallCommandSync("/interface/ethernet/print");
 
                     foreach (var sentence in reply)
                     {
@@ -67,7 +68,7 @@ namespace MikrotikSwitch
                 try
                 {
                     string cmd = enabled ? "/interface/enable" : "/interface/disable";
-                    _connection.Call(cmd, new Dictionary<string, string> { { ".id", id } });
+                    _connection.CallCommandSync(cmd, new TikCommandParameter(".id", id));
                 }
                 catch (Exception ex)
                 {
