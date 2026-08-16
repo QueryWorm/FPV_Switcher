@@ -7,8 +7,8 @@ namespace MikrotikSwitch
 {
     public class PortInfo
     {
-        public string Id { get; set; }
-        public string Name { get; set; }
+        public string? Id { get; set; }
+        public string? Name { get; set; }
         public bool Running { get; set; }
         public bool Disabled { get; set; }
     }
