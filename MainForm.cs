@@ -10,13 +10,12 @@ namespace MikrotikSwitch
 {
     public partial class MainForm : Form
     {
-        private Config _cfg;
-        private MikrotikClient _client;
+        private Config? _cfg;
+        private MikrotikClient? _client;
         private RadioButton[] _radios;
         private Label[] _statusLabels;
         private Button _applyBtn;
         private Label _statusBar;
-        private Panel _portsPanel;
         private bool _suppressChange;
         private volatile bool _switching;
         private bool _initialized;
@@ -171,7 +170,7 @@ namespace MikrotikSwitch
 
         private void PollLoop()
         {
-            var interval = TimeSpan.FromSeconds(_cfg.PollSeconds);
+            var interval = TimeSpan.FromSeconds(_cfg?.PollSeconds ?? 5);
             while (true)
             {
                 try
@@ -180,7 +179,7 @@ namespace MikrotikSwitch
                     {
                         var ports = _client.ListEthernetPorts();
                         UpdateUI(ports);
-                        SetStatus($"Подключено к {_cfg.Address}, обновлено {DateTime.Now:HH:mm:ss}");
+                        SetStatus($"Подключено к {_cfg?.Address}, обновлено {DateTime.Now:HH:mm:ss}");
                     }
                 }
                 catch (Exception ex)
@@ -199,13 +198,13 @@ namespace MikrotikSwitch
                 return;
             }
 
-            var byName = ports.ToDictionary(p => p.Name);
+            var byName = ports.ToDictionary(p => p.Name ?? "");
 
             _suppressChange = true;
             for (int i = 0; i < PortCount; i++)
             {
-                var name = _cfg.PortNames[i];
-                if (byName.TryGetValue(name, out var p))
+                var name = _cfg?.PortNames[i];
+                if (name != null && byName.TryGetValue(name, out var p))
                 {
                     _statusLabels[i].Text = p.Disabled ? "выключен" : "▶ включён";
                     _statusLabels[i].Text += ", " + (p.Running ? "линк есть ●" : "линка нет ○");
@@ -238,7 +237,7 @@ namespace MikrotikSwitch
             _statusBar.Text = text;
         }
 
-        private void Radio_CheckedChanged(object sender, EventArgs e)
+        private void Radio_CheckedChanged(object? sender, EventArgs e)
         {
             var radio = sender as RadioButton;
             if (radio == null || _suppressChange) return;
@@ -246,12 +245,13 @@ namespace MikrotikSwitch
             // Если радио стало checked, снимаем все остальные (гарантия)
             if (radio.Checked)
             {
-                int idx = (int)radio.Tag;
-                SetStatus($"Выбран FPV {idx+1} — нажмите «Применить»");
+                int idx = (int?)radio.Tag ?? -1;
+                if (idx >= 0)
+                    SetStatus($"Выбран FPV {idx+1} — нажмите «Применить»");
             }
         }
 
-        private async void ApplyBtn_Click(object sender, EventArgs e)
+        private async void ApplyBtn_Click(object? sender, EventArgs e)
         {
             if (_client == null || _switching) return;
 
@@ -273,9 +273,9 @@ namespace MikrotikSwitch
 
             // Проверим линк
             var ports = _client.ListEthernetPorts();
-            var byName = ports.ToDictionary(p => p.Name);
-            var targetName = _cfg.PortNames[selected];
-            if (!byName.TryGetValue(targetName, out var target) || !target.Running)
+            var byName = ports.ToDictionary(p => p.Name ?? "");
+            var targetName = _cfg?.PortNames[selected];
+            if (targetName == null || !byName.TryGetValue(targetName, out var target) || !target.Running)
             {
                 SetStatus($"На FPV {selected+1} нет линка — переключение отклонено");
                 return;
@@ -291,7 +291,7 @@ namespace MikrotikSwitch
                 foreach (var p in ports)
                 {
                     if (p.Name == targetName) continue;
-                    if (!p.Disabled)
+                    if (!p.Disabled && p.Id != null)
                     {
                         _client.SetPortEnabled(p.Id, false);
                         // небольшая пауза между командами
@@ -317,7 +317,10 @@ namespace MikrotikSwitch
                 }
 
                 // Включаем целевой
-                _client.SetPortEnabled(target.Id, true);
+                if (target.Id != null)
+                {
+                    _client.SetPortEnabled(target.Id, true);
+                }
 
                 // Обновляем UI
                 ports = _client.ListEthernetPorts();
