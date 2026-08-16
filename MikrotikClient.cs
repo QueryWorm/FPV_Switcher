@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using tik4net;
-using tik4net.Objects.Interface;
 
 namespace MikrotikSwitch
 {
@@ -25,7 +23,7 @@ namespace MikrotikSwitch
             string host = parts[0];
             int port = int.Parse(parts[1]);
 
-            _connection = TikConnectionFactory.CreateConnection(TikConnectorType.Api);
+            _connection = ConnectionFactory.CreateConnection(TikConnectionType.Api);
             _connection.Open(host, user, pass, port);
         }
 
@@ -37,17 +35,20 @@ namespace MikrotikSwitch
 
                 try
                 {
-                    var interfaces = _connection.CreateQuery<Interface>().ToList();
+                    var reply = _connection.Call("/interface/ethernet/print");
 
-                    foreach (var iface in interfaces)
+                    foreach (var sentence in reply)
                     {
-                        result.Add(new PortInfo
+                        if (sentence.ContainsKey(".id"))
                         {
-                            Id = iface.Id,
-                            Name = iface.Name ?? "",
-                            Running = iface.Running == true,
-                            Disabled = iface.Disabled == true
-                        });
+                            result.Add(new PortInfo
+                            {
+                                Id = sentence[".id"],
+                                Name = sentence.ContainsKey("name") ? sentence["name"] : "",
+                                Running = sentence.ContainsKey("running") && sentence["running"] == "true",
+                                Disabled = sentence.ContainsKey("disabled") && sentence["disabled"] == "true"
+                            });
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -65,18 +66,8 @@ namespace MikrotikSwitch
             {
                 try
                 {
-                    var query = _connection.CreateQuery<Interface>();
-                    var iface = query.FirstOrDefault(i => i.Id == id);
-
-                    if (iface != null)
-                    {
-                        iface.Disabled = !enabled;
-                        _connection.SaveEntity(iface);
-                    }
-                    else
-                    {
-                        throw new Exception($"Interface with id {id} not found");
-                    }
+                    string cmd = enabled ? "/interface/enable" : "/interface/disable";
+                    _connection.Call(cmd, new Dictionary<string, string> { { ".id", id } });
                 }
                 catch (Exception ex)
                 {
@@ -87,8 +78,15 @@ namespace MikrotikSwitch
 
         public void Dispose()
         {
-            _connection?.Close();
-            _connection?.Dispose();
+            if (_connection != null)
+            {
+                try
+                {
+                    _connection.Close();
+                }
+                catch { }
+                _connection.Dispose();
+            }
         }
     }
 }
