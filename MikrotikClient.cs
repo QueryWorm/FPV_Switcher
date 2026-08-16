@@ -68,7 +68,7 @@ namespace MikrotikSwitch
                 try
                 {
                     string cmd = enabled ? "/interface/enable" : "/interface/disable";
-                    _connection.CallCommandSync(cmd, new[] { new KeyValuePair<string, string>(".id", id) });
+                    _connection.CallCommandSync(cmd, $"=.id={id}");
                 }
                 catch (Exception ex)
                 {
