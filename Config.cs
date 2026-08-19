@@ -12,7 +12,8 @@ namespace MikrotikSwitch
         public string[] PortNames { get; set; } = new[] { "ether1", "ether2", "ether3", "ether4", "ether5", "ether6" };
         public int PollSeconds { get; set; } = 2;
 
-        private const string ConfigFile = "config.json";
+        private static readonly string ConfigFile = Path.Combine(
+            AppContext.BaseDirectory, "config.json");
 
         public static Config Load()
         {
@@ -24,7 +25,10 @@ namespace MikrotikSwitch
             }
 
             var json = File.ReadAllText(ConfigFile);
-            var cfg = JsonConvert.DeserializeObject<Config>(json);
+            var cfg = JsonConvert.DeserializeObject<Config>(json)
+                      ?? throw new Exception($"Конфиг {ConfigFile} пуст или невалиден");
+
+            cfg.PortNames ??= new[] { "ether1", "ether2", "ether3", "ether4", "ether5", "ether6" };
             if (cfg.PortNames.Length != 6)
                 throw new Exception($"В {ConfigFile} должно быть ровно 6 имён в port_names, сейчас {cfg.PortNames.Length}");
             if (cfg.PollSeconds <= 0) cfg.PollSeconds = 2;

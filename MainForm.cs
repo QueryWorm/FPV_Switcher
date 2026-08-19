@@ -12,13 +12,14 @@ namespace MikrotikSwitch
     {
         private Config? _cfg;
         private MikrotikClient? _client;
-        private RadioButton[] _radios;
-        private Label[] _statusLabels;
-        private Button _applyBtn;
-        private Label _statusBar;
-        private bool _suppressChange;
+        private RadioButton[] _radios = null!;
+        private Label[] _statusLabels = null!;
+        private Button _applyBtn = null!;
+        private Label _statusBar = null!;
+        private volatile bool _suppressChange;
         private volatile bool _switching;
         private bool _initialized;
+        private CancellationTokenSource? _pollCts;
 
         private const int PortCount = 6;
 
@@ -48,7 +49,6 @@ namespace MikrotikSwitch
                 }
             };
 
-            // Группа портов
             var groupBox = new GroupBox
             {
                 Text = "Активный FPV",
@@ -107,7 +107,6 @@ namespace MikrotikSwitch
 
             groupBox.Controls.Add(flow);
 
-            // Панель с кнопкой
             var buttonPanel = new FlowLayoutPanel
             {
                 Dock = DockStyle.Fill,
@@ -123,7 +122,6 @@ namespace MikrotikSwitch
             _applyBtn.Click += ApplyBtn_Click;
             buttonPanel.Controls.Add(_applyBtn);
 
-            // Статус-бар
             _statusBar = new Label
             {
                 Dock = DockStyle.Fill,
@@ -164,19 +162,20 @@ namespace MikrotikSwitch
                 _applyBtn.Enabled = false;
             }
 
-            // Запуск фонового опроса
-            Task.Run(() => PollLoop());
+            _pollCts = new CancellationTokenSource();
+            Task.Run(() => PollLoop(_pollCts.Token));
         }
 
-        private void PollLoop()
+        private void PollLoop(CancellationToken ct)
         {
             var interval = TimeSpan.FromSeconds(_cfg?.PollSeconds ?? 5);
-            while (true)
+            while (!ct.IsCancellationRequested)
             {
                 try
                 {
                     if (_client != null)
                     {
+                        _client.EnsureConnected();
                         var ports = _client.ListEthernetPorts();
                         UpdateUI(ports);
                         SetStatus($"Подключено к {_cfg?.Address}, обновлено {DateTime.Now:HH:mm:ss}");
@@ -186,7 +185,9 @@ namespace MikrotikSwitch
                 {
                     SetStatus("Ошибка опроса: " + ex.Message);
                 }
-                Thread.Sleep(interval);
+
+                try { Thread.Sleep(interval); }
+                catch (OperationCanceledException) { break; }
             }
         }
 
@@ -198,7 +199,13 @@ namespace MikrotikSwitch
                 return;
             }
 
-            var byName = ports.ToDictionary(p => p.Name ?? "");
+            var byName = new Dictionary<string, PortInfo>();
+            foreach (var p in ports)
+            {
+                var key = p.Name ?? "";
+                if (!byName.ContainsKey(key))
+                    byName[key] = p;
+            }
 
             _suppressChange = true;
             for (int i = 0; i < PortCount; i++)
@@ -210,7 +217,6 @@ namespace MikrotikSwitch
                     _statusLabels[i].Text += ", " + (p.Running ? "линк есть ●" : "линка нет ○");
                     _statusLabels[i].ForeColor = p.Running ? Color.DarkGreen : Color.Gray;
 
-                    // Отметка радио (только при первом синхроне)
                     if (!_initialized)
                     {
                         if (!p.Disabled)
@@ -242,7 +248,6 @@ namespace MikrotikSwitch
             var radio = sender as RadioButton;
             if (radio == null || _suppressChange) return;
 
-            // Если радио стало checked, снимаем все остальные (гарантия)
             if (radio.Checked)
             {
                 int idx = (int?)radio.Tag ?? -1;
@@ -255,7 +260,6 @@ namespace MikrotikSwitch
         {
             if (_client == null || _switching) return;
 
-            // Найдём выбранный порт
             int selected = -1;
             for (int i = 0; i < PortCount; i++)
             {
@@ -271,9 +275,26 @@ namespace MikrotikSwitch
                 return;
             }
 
-            // Проверим линк
-            var ports = _client.ListEthernetPorts();
-            var byName = ports.ToDictionary(p => p.Name ?? "");
+            List<PortInfo> ports;
+            try
+            {
+                _client.EnsureConnected();
+                ports = _client.ListEthernetPorts();
+            }
+            catch (Exception ex)
+            {
+                SetStatus("Ошибка подключения: " + ex.Message);
+                return;
+            }
+
+            var byName = new Dictionary<string, PortInfo>();
+            foreach (var p in ports)
+            {
+                var key = p.Name ?? "";
+                if (!byName.ContainsKey(key))
+                    byName[key] = p;
+            }
+
             var targetName = _cfg?.PortNames[selected];
             if (targetName == null || !byName.TryGetValue(targetName, out var target) || !target.Running)
             {
@@ -287,19 +308,16 @@ namespace MikrotikSwitch
 
             try
             {
-                // Гасим все остальные
                 foreach (var p in ports)
                 {
                     if (p.Name == targetName) continue;
                     if (!p.Disabled && p.Id != null)
                     {
                         _client.SetPortEnabled(p.Id, false);
-                        // небольшая пауза между командами
                         await Task.Delay(50);
                     }
                 }
 
-                // Перепроверяем, что все остальные выключены
                 ports = _client.ListEthernetPorts();
                 bool allOff = true;
                 foreach (var p in ports)
@@ -316,13 +334,11 @@ namespace MikrotikSwitch
                     return;
                 }
 
-                // Включаем целевой
                 if (target.Id != null)
                 {
                     _client.SetPortEnabled(target.Id, true);
                 }
 
-                // Обновляем UI
                 ports = _client.ListEthernetPorts();
                 UpdateUI(ports);
                 SetStatus($"FPV {selected+1} включён, остальные подтверждённо выключены");
@@ -340,6 +356,7 @@ namespace MikrotikSwitch
 
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
+            _pollCts?.Cancel();
             _client?.Dispose();
             base.OnFormClosed(e);
         }
